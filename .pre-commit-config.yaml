@@ -1,0 +1,30 @@
+# Activate per clone with: pre-commit install
+#
+# Nothing here rewrites files. rtl/upstream/ and platform/pocket/ must stay
+# byte-unmodified, so add excludes for them before adding any hook that does.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+
+  # Same script CI runs, kept as the single source of truth
+  - repo: local
+    hooks:
+      - id: check-packages
+        name: check package consistency
+        entry: scripts/check_packages.sh
+        language: script
+        pass_filenames: false
+        always_run: true

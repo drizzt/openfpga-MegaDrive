@@ -396,8 +396,10 @@ module ym_slatch_t #(parameter DATA_WIDTH = 1)
 		mem <= mem_assign;
 	end
 	
-	assign val = mem_assign;
-	assign nval = ~mem_assign;
+	//assign val = mem_assign;
+	//assign nval = ~mem_assign;
+	assign val = mem;
+	assign nval = ~mem;
 	
 endmodule
 

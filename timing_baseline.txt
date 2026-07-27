@@ -1,0 +1,16 @@
+# Timing baseline for the gate in .github/workflows/pr.yml.
+#
+# This core does not close timing, and neither does upstream MegaDrive_MiSTer:
+# the sys_pll domain runs the Nuked gate-level netlist and is short by roughly
+# 1.7 ns. A gate on "no negative slack" would therefore fail forever, so the
+# gate blocks REGRESSIONS against the numbers below instead.
+#
+# Both are the worst value across all clocks in ap_core.sta.summary (one corner
+# only, the qsf turns multicorner analysis off). Tolerances live in
+# scripts/check_timing_regression.sh. Lower these numbers in the same commit
+# that improves them; that ratchet is what stops the standing violation from
+# quietly getting wider.
+#
+# Quartus 21.1, measured on the tree as committed.
+WNS=-1.662
+TNS=-104.522

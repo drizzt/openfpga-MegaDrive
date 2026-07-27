@@ -20,6 +20,8 @@
  *
  */
 
+`default_nettype wire
+
 //`define M68K_CHEAT
 //`define Z80_CHEAT
 //`define EXT_CLOCKS

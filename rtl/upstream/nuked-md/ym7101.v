@@ -7292,8 +7292,8 @@ module ym7101_dff #(parameter DATA_WIDTH = 1)
 	
 	wire [DATA_WIDTH-1:0] l2_assign = rst ? {DATA_WIDTH{1'h0}} : (clk ? l1 : l2);
 	
-	assign outp = l2_assign;
-	//assign outp = l2;
+	//assign outp = l2_assign;
+	assign outp = l2;
 	
 	always @(posedge MCLK)
 	begin

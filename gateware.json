@@ -1,0 +1,24 @@
+{
+  "name": "MegaDrive",
+  "displayName": "Sega Mega Drive / Genesis",
+  "description": "Sega Mega Drive / Genesis for Analogue Pocket, based on Nuked-MD-FPGA",
+  "author": "drizzt",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "repository": "https://github.com/drizzt/openFPGA-MegaDrive",
+  "keywords": [
+    "ecosystem:gateman"
+  ],
+  "scripts": {
+    "build:pocket": "quartus_sh -t generate.tcl"
+  },
+  "platforms": {
+    "pocket": "1.3.0"
+  },
+  "upstream": {
+    "repository": "https://github.com/MiSTer-devel/MegaDrive_MiSTer",
+    "vendored": "rtl/upstream",
+    "release_path": "releases/"
+  },
+  "modules": {}
+}

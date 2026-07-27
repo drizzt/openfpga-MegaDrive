@@ -1,0 +1,69 @@
+name: Build
+
+# The single build path, called by pr.yml or run manually. A manual run also
+# produces the install zips, so a branch can be tested without opening a PR.
+#
+# No concurrency block: as a called workflow it shares the caller's group, so one
+# here would let parent and child cancel each other mid-compile.
+
+on:
+  workflow_call:
+    outputs:
+      matrix:
+        description: Platform matrix built from pkg/Cores/*/core.json.
+        value: ${{ jobs.build.outputs.matrix }}
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build core
+        uses: ./.github/actions/build-core
+
+      - name: Build platform matrix
+        id: matrix
+        run: |
+          # Data-driven from pkg/Cores/*/core.json (no hardcoded platform list).
+          include=$(for f in pkg/Cores/*/core.json; do
+            d=$(basename "$(dirname "$f")")
+            s=$(jq -r '.core.metadata.shortname' "$f")
+            p=$(jq -r '.core.metadata.platform_ids[0]' "$f")
+            jq -nc --arg d "$d" --arg s "$s" --arg p "$p" \
+              '{pkgdir:$d, short:$s, pid:$p}'
+          done | jq -sc '{include: .}')
+          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+          # Packages release in lockstep, so any core.json carries the version.
+          set -- pkg/Cores/*/core.json
+          echo "version=$(jq -r '.core.metadata.version' "$1")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload packaged tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pocket-tree
+          path: |
+            pkg/Cores
+            pkg/Platforms
+            pkg/Assets
+
+      - name: Package build zips
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          SAFE_BRANCH=$(printf '%s' "$GITHUB_REF_NAME" | sed 's#[^A-Za-z0-9._-]#-#g')
+          scripts/package_release.sh "${{ steps.matrix.outputs.version }}" "$SAFE_BRANCH"
+          echo "PACKAGE_BRANCH=${SAFE_BRANCH}" >> "$GITHUB_ENV"
+
+      - name: Upload package zips
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-${{ env.PACKAGE_BRANCH }}
+          path: openfpga-*_${{ env.PACKAGE_BRANCH }}_${{ steps.matrix.outputs.version }}.zip
