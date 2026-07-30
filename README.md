@@ -84,6 +84,10 @@ cleaner YM3438.
 a game writes palette memory mid-line. Some games rely on it, most look better
 without it.
 
+**Composite Blend** blends adjacent pixels horizontally, like a composite video
+cable. Effects drawn as thin stripes, such as Sonic's waterfalls, become
+translucent instead of striped.
+
 ### Controls
 
 | Pocket | Mega Drive |

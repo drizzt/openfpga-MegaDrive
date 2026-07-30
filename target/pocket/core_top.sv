@@ -593,6 +593,9 @@ module core_top (
   // The dot the VDP puts in the left column when CRAM is written mid-line
   reg cfg_cramdot = 0;
 
+  // Composite-style horizontal blend (cofi), the MiSTer Composite Blend option
+  reg cfg_blend = 0;
+
   localparam [13:0] RESET_PULSE = 14'd8000;  // ~108 us at 74.25 MHz
 
   reg  [13:0] reset_counter = 0;
@@ -625,6 +628,9 @@ module core_top (
         end
         32'h00000020: begin
           cfg_cramdot <= bridge_wr_data[0];
+        end
+        32'h00000024: begin
+          cfg_blend <= bridge_wr_data[0];
         end
         32'hF0000000: begin
           reset_counter <= RESET_PULSE;
@@ -679,13 +685,24 @@ module core_top (
   wire cfg_jap_s;
   wire rom_download_s;
   wire cfg_cramdot_s;
+  wire cfg_blend_s;
   wire inmenu_md_s;
 
   synch_3 #(
-      .WIDTH(6)
+      .WIDTH(7)
   ) md_settings_sync (
-      .i  ({loading_74a, reset_req_74a, cfg_jap, rom_download, cfg_cramdot, osnotify_inmenu}),
-      .o  ({loading_s, md_reset_req_s, cfg_jap_s, rom_download_s, cfg_cramdot_s, inmenu_md_s}),
+      .i({
+        loading_74a, reset_req_74a, cfg_jap, rom_download, cfg_cramdot, cfg_blend, osnotify_inmenu
+      }),
+      .o({
+        loading_s,
+        md_reset_req_s,
+        cfg_jap_s,
+        rom_download_s,
+        cfg_cramdot_s,
+        cfg_blend_s,
+        inmenu_md_s
+      }),
       .clk(clk_md_107_39)
   );
 
@@ -1295,7 +1312,7 @@ module core_top (
       .pal      (PAL),
       .border_en(1'b0),
       .h40corr  (1'b0),
-      .blender  (1'b0),
+      .blender  (cfg_blend_s),
 
       .arx(),  // MiSTer aspect ratio hints, unused on Pocket
       .ary(),

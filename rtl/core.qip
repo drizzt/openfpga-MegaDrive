@@ -20,6 +20,7 @@ set_global_assignment -name VERILOG_FILE              [file join $::quartus(qip_
 set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/sdram.sv"]
 set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/EEPROM_24CXX.sv"]
 set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/video_cond.sv"]
+set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/cofi.sv"]
 set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/pad_io.sv"]
 set_global_assignment -name SYSTEMVERILOG_FILE        [file join $::quartus(qip_path) "upstream/audio_cond.sv"]
 set_global_assignment -name VERILOG_FILE              [file join $::quartus(qip_path) "upstream/genesis_lpf.v"]
