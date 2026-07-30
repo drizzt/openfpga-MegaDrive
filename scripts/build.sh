@@ -7,8 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# 21.1 ships the core: it is all CI has, and timing_baseline.txt is a 21.1
-# measurement, so numbers from another version cannot be compared against it.
 # Build with QUARTUS_DIR=/opt/intelFPGA/25.1/quartus for low-level debugging,
 # where JTAG is needed: it does not work on 21.1 here.
 LOCAL_QUARTUS="${QUARTUS_DIR:-/opt/intelFPGA_lite/21.1/quartus}"

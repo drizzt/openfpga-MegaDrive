@@ -25,9 +25,6 @@ support/loader.bin
 # regenerated pre-flow by platform/pocket/build_id_gen.tcl
 platform/pocket/build_id.mif
 platform/pocket/build_id.v
-# written by scripts/check_timing_regression.sh
-timing.txt
-timing_pal.txt
 
 # Editor / OS
 *.bak
