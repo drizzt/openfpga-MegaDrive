@@ -511,29 +511,29 @@ wire        sf_sram_wr    = sf_sram_en & cart_lwr;
 reg         chk_cs;
 reg  [15:0] chk_data;
 
-// pocket: same decodes, fewer bits. $A13000 is already selected by cart_time and
-// $400000/$401000 by eleven address bits, so neither needs upstream's full 24-bit
-// compare against md_addr, which then prunes away with nothing reading it
 always @(posedge clk) begin
 	chk_cs <= 0;
 	case(chk_quirk)
-		1: if(cart_addr[23:13] == 11'h200 && !cart_addr[11:1]) begin
-				chk_data <= cart_addr[12] ? 16'hd300 : 16'h9000;
+		1: if(md_addr == 'h400000) begin
+				chk_data <= 'h9000;
+				chk_cs <= 1;
+			end
+			else if(md_addr == 'h401000) begin
+				chk_data <= 'hd300;
 				chk_cs <= 1;
 			end
 
-		2: if(cart_time && !cart_addr[7:1]) begin
+		2: if(md_addr == 'hA13000) begin
 				chk_data <= 'h0a;
 				chk_cs <= 1;
 			end
 
-		3: if(cart_time && !cart_addr[7:1]) begin
+		3: if(md_addr == 'hA13000) begin
 				chk_data <= 'h1c;
 				chk_cs <= 1;
 			end
 	endcase
 end
-// pocket-end
 
 // pocket: a Master System cart needs a 16 KB boot ROM, the Z80 bus decode and four
 // more mappers, and its FM needs the OPLL. The boot ROM alone is 13 of the 21 M10Ks
@@ -555,58 +555,6 @@ reg       realtec_quirk;
 reg [2:0] sf_quirk;
 reg [3:0] chk_quirk;
 
-// pocket: which 24CXX a cart carries is not in its header, so the table has to live
-// here, but testing 34 serials in parallel at one download word costs around 500
-// ALMs and this fit has 262 left. cart_id is final at $18A and tens of thousands of
-// words still follow, so the table is walked a row per word instead: one comparator
-// rather than 34, and a row added later is one more word of table, not more logic.
-// The read is registered, hence the compare trailing the index by a word.
-// A row is {cart_id, sram00_quirk, fmbusy_quirk, noram_quirk, eeprom_quirk}
-localparam [5:0] CART_DB_ROWS  = 34;
-localparam [24:0] CART_DB_FIRST = 'h190;
-
-reg  [5:0] db_index = 0;
-reg [70:0] db_row = 0;
-reg        db_row_valid = 0;
-
-reg [70:0] cart_db[CART_DB_ROWS] = '{
-	{"T-50446 ", 2'b00, 1'b0, 4'b0001},  // X24C01 John Madden Football 93
-	{"T-50516 ", 2'b00, 1'b0, 4'b0001},  // X24C01 John Madden Football 93 Championship Edition
-	{"T-50396 ", 2'b00, 1'b0, 4'b0001},  // X24C01 NHLPA Hockey 93
-	{"T-50176 ", 2'b00, 1'b0, 4'b0001},  // X24C01 Rings of Power
-	{"T-50606 ", 2'b00, 1'b0, 4'b0001},  // X24C01 Bill Walsh College Football
-	{"MK-1215 ", 2'b00, 1'b0, 4'b0010},  // X24C01 Evander Real Deal Holyfield's Boxing
-	{"G-4060  ", 2'b00, 1'b0, 4'b0010},  // X24C01 Wonder Boy
-	{"00001211", 2'b00, 1'b0, 4'b0010},  // X24C01 Sports Talk Baseball
-	{"MK-1228 ", 2'b00, 1'b0, 4'b0010},  // X24C01 Greatest Heavyweights
-	{"G-5538  ", 2'b00, 1'b0, 4'b0010},  // X24C01 Greatest Heavyweights JP
-	{"PR-1993 ", 2'b00, 1'b0, 4'b0010},  // X24C01 Greatest Heavyweights (prototype)
-	{"00004076", 2'b00, 1'b0, 4'b0010},  // X24C01 Honoo no Toukyuuji Dodge Danpei
-	{"T-12046 ", 2'b00, 1'b0, 4'b0010},  // X24C01 Mega Man - The Wily Wars
-	{"T-12053 ", 2'b00, 1'b0, 4'b0010},  // X24C01 Rockman Mega World
-	{"G-4524  ", 2'b00, 1'b0, 4'b0010},  // X24C01 Ninja Burai Densetsu
-	{"00054503", 2'b00, 1'b0, 4'b0010},  // X24C01 Game Toshokan
-	{"T-81033 ", 2'b00, 1'b0, 4'b0011},  // 24C02 NBA Jam (J)
-	{"T-081326", 2'b00, 1'b0, 4'b0011},  // 24C02 NBA Jam (U)(E)
-	{"T-081276", 2'b00, 1'b0, 4'b1011},  // 24C02 NFL Quarterback Club
-	{"T-81406 ", 2'b00, 1'b0, 4'b1111},  // 24C04 NBA Jam TE
-	{"T-081586", 2'b00, 1'b0, 4'b1100},  // 24C16 NFL Quarterback Club '96
-	{"T-81576 ", 2'b00, 1'b0, 4'b1101},  // 24C65 College Slam
-	{"T-81476 ", 2'b00, 1'b0, 4'b1101},  // 24C65 Frank Thomas Big Hurt Baseball
-	{"T-120106", 2'b00, 1'b0, 4'b0110},  // 24C08 Brian Lara Cricket
-	{"T-120096", 2'b00, 1'b0, 4'b0100},  // 24C16 JCART Micro Machines 2 - Turbo Tournament
-	{"T-120146", 2'b00, 1'b0, 4'b0101},  // 24C65 Brian Lara Cricket 96 / Shane Warne Cricket
-	{"T-113016", 2'b00, 1'b1, 4'b0000},  // Puggsy fake ram check
-	{" GM 0000", 2'b10, 1'b0, 4'b0000},  // Sonic 1 Remastered, save RAM fills 00 not FF
-	{"T-35036 ", 2'b01, 1'b0, 4'b0000},  // Hellfire US, reads the FM busy flag
-	{"T-25073 ", 2'b01, 1'b0, 4'b0000},  // Hellfire JP
-	{"MK-1137-", 2'b01, 1'b0, 4'b0000},  // Hellfire EU
-	{"G-4034  ", 2'b01, 1'b0, 4'b0000},  // Daisenpu / Twin Hawk JP/EU
-	{"T-44016 ", 2'b01, 1'b0, 4'b0000},  // Tecmo World Cup
-	{"T-44023 ", 2'b01, 1'b0, 4'b0000}   // Tecmo World Cup JP
-};
-// pocket-end
-
 always @(posedge clk) begin
 	reg [87:0] cart_id;
 	reg [15:0] crc = 0;
@@ -618,11 +566,9 @@ always @(posedge clk) begin
 
 	if(~old_dl && cart_dl) begin
 // pocket: the quirks whose logic is gone are constants now, there is no lightgun to
-// pick a type or a sensor delay for, and the battery-RAM flag and the table index
-// clear with the rest
+// pick a type or a sensor delay for, and the battery-RAM flag clears with the rest
 		{sram00_quirk,fmbusy_quirk,noram_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
 		sram_present <= 0;
-		db_index <= 0;
 // pocket-end
 		crc_real <= 0;
 		crc <= 0;
@@ -638,38 +584,57 @@ always @(posedge clk) begin
 		if(cart_dl_addr == 'h188) cart_id[23:08] <= {cart_dl_data[7:0],cart_dl_data[15:8]};
 		if(cart_dl_addr == 'h18A) cart_id[07:00] <= cart_dl_data[7:0];
 		if(cart_dl_addr == 'h18E) crc <= {cart_dl_data[7:0],cart_dl_data[15:8]};
-// pocket: the two Codemasters carts have no usable serial and the three SF board
-// types stamp a board number where a serial would go, so none of the five can ride
-// the table walk below and all five stay in the $190 block. Everything else moved
-// into cart_db.
-//
-// "RA" at $1B0 is the header's battery-RAM marker, and APF wants the save size in
-// the data table before it will write a file back. Both that word and the serial
-// above land early enough in the download for it.
-//
-// Then one row of cart_db per download word. cart_id is complete at $18A, so the
-// walk can start with the $190 block and is done 34 words later, tens of thousands
-// of words before the ROM ends. The registered read is what lets Quartus infer the
-// table as block RAM (altsyncram:cart_db_rtl_0, 2 M10Ks) rather than a 71-bit wide
-// 34:1 constant mux
 		if(cart_dl_addr == 'h190) begin
-			     if(sp=="DNLD" && crc == 'h168B) eeprom_quirk <= 4'b0110;  // 24C08 JCART Micro Machines Military
+			     if(cart_id[63:0] == "T-50446 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93
+			else if(cart_id[63:0] == "T-50516 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93 Championship Edition
+			else if(cart_id[63:0] == "T-50396 ") eeprom_quirk <= 4'b0001;  // X24C01 NHLPA Hockey 93
+			else if(cart_id[63:0] == "T-50176 ") eeprom_quirk <= 4'b0001;  // X24C01 Rings of Power
+			else if(cart_id[63:0] == "T-50606 ") eeprom_quirk <= 4'b0001;  // X24C01 Bill Walsh College Football
+			else if(cart_id[63:0] == "MK-1215 ") eeprom_quirk <= 4'b0010;  // X24C01 Evander Real Deal Holyfield's Boxing
+			else if(cart_id[63:0] == "G-4060  ") eeprom_quirk <= 4'b0010;  // X24C01 Wonder Boy
+			else if(cart_id[63:0] == "00001211") eeprom_quirk <= 4'b0010;  // X24C01 Sports Talk Baseball
+			else if(cart_id[63:0] == "MK-1228 ") eeprom_quirk <= 4'b0010;  // X24C01 Greatest Heavyweights
+			else if(cart_id[63:0] == "G-5538  ") eeprom_quirk <= 4'b0010;  // X24C01 Greatest Heavyweights JP
+			else if(cart_id[63:0] == "PR-1993 ") eeprom_quirk <= 4'b0010;  // X24C01 Greatest Heavyweights (prototype)
+			else if(cart_id[63:0] == "00004076") eeprom_quirk <= 4'b0010;  // X24C01 Honoo no Toukyuuji Dodge Danpei
+			else if(cart_id[63:0] == "T-12046 ") eeprom_quirk <= 4'b0010;  // X24C01 Mega Man - The Wily Wars 
+			else if(cart_id[63:0] == "T-12053 ") eeprom_quirk <= 4'b0010;  // X24C01 Rockman Mega World 
+			else if(cart_id[63:0] == "G-4524  ") eeprom_quirk <= 4'b0010;  // X24C01 Ninja Burai Densetsu
+			else if(cart_id[63:0] == "00054503") eeprom_quirk <= 4'b0010;  // X24C01 Game Toshokan
+			else if(cart_id[63:0] == "T-81033 ") eeprom_quirk <= 4'b0011;  // 24C02 NBA Jam (J)
+			else if(cart_id[63:0] == "T-081326") eeprom_quirk <= 4'b0011;  // 24C02 NBA Jam (U)(E)
+			else if(cart_id[63:0] == "T-081276") eeprom_quirk <= 4'b1011;  // 24C02 NFL Quarterback Club
+			else if(cart_id[63:0] == "T-81406 ") eeprom_quirk <= 4'b1111;  // 24C04 NBA Jam TE
+			else if(cart_id[63:0] == "T-081586") eeprom_quirk <= 4'b1100;  // 24C16 NFL Quarterback Club '96
+			else if(cart_id[63:0] == "T-81576 ") eeprom_quirk <= 4'b1101;  // 24C65 College Slam
+			else if(cart_id[63:0] == "T-81476 ") eeprom_quirk <= 4'b1101;  // 24C65 Frank Thomas Big Hurt Baseball
+			else if(cart_id[63:0] == "T-120106") eeprom_quirk <= 4'b0110;  // 24C08 Brian Lara Cricket
+			else if(sp=="DNLD" && crc == 'h168B) eeprom_quirk <= 4'b0110;  // 24C08 JCART Micro Machines Military
 			else if(sp=="DNLD" && crc == 'h165E) eeprom_quirk <= 4'b0100;  // 24C16 JCART Micro Machines Turbo Tournament 96
+			else if(cart_id[63:0] == "T-120096") eeprom_quirk <= 4'b0100;  // 24C16 JCART Micro Machines 2 - Turbo Tournament
+			else if(cart_id[63:0] == "T-120146") eeprom_quirk <= 4'b0101;  // 24C65 Brian Lara Cricket 96 / Shane Warne Cricket
+
+// pocket: pier_quirk, svp_quirk and schan_quirk are tied off at their deletion
+// sites above and the lightgun ports are gone, so the rows that set them (Pier
+// Solar, Virtua Racing, Game no Kanzume Otokuyou) and the sensor-delay block that
+// closed the upstream chain are dropped
+			else if(cart_id[63:0] == "T-113016") noram_quirk  <= 1;        // Puggsy fake ram check
+			else if(cart_id[63:0] == "T-35036 ") fmbusy_quirk <= 1;        // Hellfire US
+			else if(cart_id[63:0] == "T-25073 ") fmbusy_quirk <= 1;        // Hellfire JP
+			else if(cart_id[63:0] == "MK-1137-") fmbusy_quirk <= 1;        // Hellfire EU
+			else if(cart_id[63:0] == "G-4034  ") fmbusy_quirk <= 1;        // DAISENPU/TWIN HAWK JP/EU
+			else if(cart_id[63:0] == "T-44016 ") fmbusy_quirk <= 1;        // Tecmo World Cup
+			else if(cart_id[63:0] == "T-44023 ") fmbusy_quirk <= 1;        // Tecmo World Cup JP
+			else if(cart_id[63:0] == " GM 0000") sram00_quirk <= 1;        // Sonic 1 Remastered
 			else if(cart_id[87:40] == "SF-001")  sf_quirk     <= {crc == 16'h3E08,2'b01}; // Beggar Prince (Unl), Beggar Prince rev 1 (Unl)
 			else if(cart_id[87:40] == "SF-002")  sf_quirk     <= {1'b1,2'b10}; // Legend of Wukong (Unl)
 			else if(cart_id[87:40] == "SF-004")  sf_quirk     <= {1'b1,2'b11}; // Star Odyssey (Unl)
+// pocket-end
 		end
 
+// pocket: "RA" at $1B0 is the header's battery-RAM marker, and APF wants the save
+// size in the data table before it will write a save file back
 		if(cart_dl_addr == 'h1B0 && {cart_dl_data[7:0],cart_dl_data[15:8]} == "RA") sram_present <= 1;
-
-		db_row <= cart_db[db_index];
-		db_row_valid <= (cart_dl_addr >= CART_DB_FIRST) && (db_index != CART_DB_ROWS);
-
-		if((cart_dl_addr >= CART_DB_FIRST) && (db_index != CART_DB_ROWS)) db_index <= db_index + 1'd1;
-
-		if(db_row_valid && cart_id[63:0] == db_row[70:7]) begin
-			{sram00_quirk,fmbusy_quirk,noram_quirk,eeprom_quirk} <= db_row[6:0];
-		end
 // pocket-end
 
 		if(cart_dl_addr == 'h7E100) realtec_id[31:16] <= {cart_dl_data[7:0],cart_dl_data[15:8]};
