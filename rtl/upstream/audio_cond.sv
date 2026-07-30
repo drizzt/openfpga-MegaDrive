@@ -108,7 +108,7 @@ CEGen fltce
 wire [15:0] psg_amp = PSG + PSG[15:1];
 
 // 8KHz 2tap
-IIR_filter
+iir_filter
 #(
 	.use_params(1),
 	.stereo(0),
