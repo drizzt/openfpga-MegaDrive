@@ -1,10 +1,12 @@
 // pocket: Chip32 loader for the Mega Drive core. agg23's loader picks one bitstream
-// and runs it, but this core ships two because the master clock is baked into the
-// PLL, so the loader has to read the cartridge header's region field (0x1F0..0x1F2)
-// and choose before loading:
+// and runs it, but this core ships four because the master clock is baked into the
+// PLL and the SVP does not fit next to the save hardware, so the loader has to read
+// the cartridge header's region field (0x1F0..0x1F2) and serial (0x183..0x18A) and
+// choose before loading:
 //   US, or anything unrecognised -> core 0 (NTSC, 53.693175 MHz)
 //   EU and not US                -> core 1 (PAL, 53.203424 MHz)
-// Same decision rule as MiSTer's Genesis.sv.
+//   Virtua Racing's serial       -> core 2 or 3, region as above plus the SVP
+// Same region rule as MiSTer's Genesis.sv, same serials as cartridge.sv's svp_quirk.
 //
 // Derived from agg23/openfpga-SNES support/loader.asm: the slot numbering, the bitstream select and
 // the error path are its, the SNES cartridge work (SMC header detection, ROM size
@@ -32,6 +34,17 @@ constant host_init = 0x4002
 constant region_offset = 0x1F0
 constant region_length = 3
 
+// The header's "GM MK-1229 -00" style serial without the "GM " prefix, the same
+// 8 bytes cartridge.sv compares as cart_id[63:0]
+constant serial_offset = 0x183
+constant serial_length = 8
+
+// One read spans serial through region (0x183..0x1F2): util.asm's seek()/read()
+// skip labels are constants, so the macros cannot expand a second time. The
+// serial lands at rambuf, the region field at regionbuf inside the same window
+constant header_length = region_offset + region_length - serial_offset
+constant regionbuf = rambuf + region_offset - serial_offset
+
 // Error vector (0x0)
 jp error_handler
 
@@ -54,9 +67,9 @@ ld r1,#cart_dataslot
 open r1,r2
 jp nz,print_error_and_exit
 
-ld r1,#region_offset
+ld r1,#serial_offset
 seek()
-ld r1,#region_length
+ld r1,#header_length
 ld r2,#rambuf
 read()
 close
@@ -67,7 +80,7 @@ ld r4,#0
 ld r5,#0
 
 // Character form, any of the three bytes, so "JUE" and "UE " both resolve
-ld r6,#rambuf
+ld r6,#regionbuf
 ld r7,#region_length
 
 char_loop:
@@ -90,7 +103,7 @@ jp nz,char_loop
 
 // Hex nibble form, first byte only, and only where that byte is not already a
 // region character: "E" is 0x45, which also falls inside the "A".."F" range
-ld.b r1,(rambuf)
+ld.b r1,(regionbuf)
 cmp r1,#0x4A                // "J"
 jp z,decide
 cmp r1,#0x55
@@ -137,7 +150,17 @@ cmp r5,#0
 jp z,set_core
 ld r0,#1
 
+// Virtua Racing needs the SVP, and its bitstreams sit at core id +2
 set_core:
+ld r8,#svp_serial_us
+call serial_cmp
+jp z,svp_core
+ld r8,#svp_serial_jp
+call serial_cmp
+jp nz,run_core
+svp_core:
+add r0,#2
+run_core:
 core r0
 
 // Japan only when the header says so and neither export region does, which is
@@ -179,6 +202,22 @@ host r0,r0
 
 exit 0
 
+// Serial compare, r8 = expected string; z set only on a full 8-byte match. Uses
+// r8..r12 because r3..r5 still hold the region flags for write_region
+serial_cmp:
+ld r9,#rambuf
+ld r10,#serial_length
+serial_cmp_loop:
+ld.b r11,(r8)
+ld.b r12,(r9)
+cmp r11,r12
+ret nz
+add r8,#1
+add r9,#1
+sub r10,#1
+jp nz,serial_cmp_loop
+ret
+
 error_handler:
 ld r14,#generic_err_msg
 
@@ -193,6 +232,11 @@ ld r1,#download_addr
 ld r2,#0
 pmpw r1,r2
 exit 1
+
+svp_serial_us:
+db "MK-1229 "                // Virtua Racing EU/US
+svp_serial_jp:
+db "G-7001  "                // Virtua Racing JP
 
 rom_err_msg:
 db "Could not load ROM",0

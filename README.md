@@ -45,8 +45,8 @@ are supported.
 ### Cartridges
 
 Plain ROMs, SSF2 bank switching (Super Street Fighter 2 and most pirate carts),
-the Realtec and SF-001/002/004 mappers, and the fixed-value protection reads a
-handful of unlicensed carts expect.
+the Realtec and SF-001/002/004 mappers, the SVP chip (Virtua Racing), and the
+fixed-value protection reads a handful of unlicensed carts expect.
 
 ### Saves
 
@@ -120,7 +120,7 @@ The game pauses while the Pocket menu is open.
 - Savestates and sleep, so leaving the core loses your progress
 - Master System backward compatibility
 - MD+ and CDDA, which need hardware the Pocket does not have
-- SVP (Virtua Racing), Pier Solar and Sega Channel carts
+- Pier Solar and Sega Channel carts
 - J-Cart, so the Codemasters carts save but only take two controllers
 - Cheats, multitaps, lightguns, keyboard and mouse
 

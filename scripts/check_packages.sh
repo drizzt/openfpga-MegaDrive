@@ -34,8 +34,9 @@ done
 # Each of these is one shared artifact fanned out to every package. They are
 # build products (gitignored), so absence everywhere is fine (fresh checkout);
 # present in only some packages is drift. Compared per filename, so the NTSC and
-# PAL bitstreams are never compared to each other.
-for bin in md_ntsc.rbf_r md_pal.rbf_r loader.bin; do
+# PAL bitstreams are never compared to each other. The bitstream names come from
+# core.json rather than a list here, so a new variant cannot be forgotten.
+for bin in $(jq -r '.core.cores[].filename' pkg/pocket/Cores/*/core.json | sort -u) loader.bin; do
   # `|| true`: with set -e + pipefail, a glob that matches nothing makes ls
   # exit non-zero and aborts the script before the "absent everywhere" guard
   # below can run (the case on a fresh checkout, where binaries aren't built).

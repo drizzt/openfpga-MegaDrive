@@ -5,7 +5,7 @@ description: >-
 
 # pocket: no upstream counterpart, agg23 inlines these steps in its build workflow.
 # Factored out here because two workflows run the same build, and timing is read per
-# variant since this core ships two bitstreams.
+# variant since this core ships more than one bitstream.
 #
 # A composite action rather than a reusable workflow, so the release job can run
 # these steps inline in a checkout it already owns and commits back to.

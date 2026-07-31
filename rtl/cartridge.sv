@@ -17,12 +17,19 @@
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================
 
-// Adapted from rtl/upstream/cartridge.sv. A 5CEBA4 fits 18480 ALMs and 308 M10Ks
-// and this design uses 99% of the first and 93% of the second, so everything that
-// does not fit, or that has no consumer on the Pocket, is gone: the SVP, Pier
-// Solar, the Sega Channel, the Master System cart path with its boot ROM and OPLL,
-// the J-Cart and the lightgun. Every difference sits inside a marker pair below.
+// Adapted from rtl/upstream/cartridge.sv. Everything that does not fit, or
+// that has no consumer on the Pocket, is gone: Pier Solar, the Sega Channel,
+// the Master System cart path with its boot ROM and OPLL, the J-Cart
+// and the lightgun. The SVP does not fit either, but Virtua Racing needs it, so it
+// is behind the SVP parameter and ships as its own bitstream that trades the save
+// hardware for the DSP. Every difference sits inside a marker pair below.
 module cartridge
+// pocket: the device cannot hold the SVP next to the full core, so the SVP build
+// is a separate bitstream the Chip32 loader picks for Virtua Racing only. Virtua
+// Racing has no battery RAM, so that build gives up the save RAM and the EEPROM
+// to pay for the DSP
+#(parameter SVP = 1'b0)
+// pocket-end
 (
 	input             clk,
 	input             clk_ram,
@@ -68,8 +75,8 @@ module cartridge
 	input             cart_dma,
 
 // pocket: the APF save slot is a byte-addressed 64 KB file served by
-// data_loader/data_unloader, and a word-wide port on the save RAM costs 578 ALMs
-// of read-during-write bypass. The fill window needs a flag of its own because
+// data_loader/data_unloader, and a word-wide port on the save RAM would drag in
+// read-during-write bypass logic. The fill window needs a flag of its own because
 // cart_dl stays high until every data slot is in, the save file included, so
 // filling on cart_dl would erase the file it had just loaded
 	input      [15:0] save_addr,
@@ -103,9 +110,8 @@ sdram sdram
 	.dout1(rom_data),
 // pocket: port 1 never writes. Upstream drives these for the Sega Channel, whose
 // rom_we is 0 here, so req1 can never fire with rom_rd low and the strobes are never
-// sampled asserted. Leaving them connected measured +1.9 ns of worst slack: it is
-// 16 bits of data and two strobes into the arbiter on the 107 MHz clock, and at 98%
-// fill the fitter pays for that in the 68000, which is where all the slack already is
+// sampled asserted. Leaving them connected only feeds 16 bits of data and two
+// strobes into the arbiter on the clk_ram clock that nothing ever uses
 	.din1(0),
 	.wrl1(0),
 	.wrh1(0),
@@ -113,15 +119,13 @@ sdram sdram
 	.req1(rom_req),
 	.ack1(rom_ack),
 
-// pocket: port 2 fetched the SVP's ROM. Tied off so it never wins arbitration
-	.addr2(0),
+	.addr2(rom2_a),
 	.din2(0),
-	.dout2(),
+	.dout2(rom2_data),
 	.wrl2(0),
 	.wrh2(0),
-	.req2(0),
-	.ack2()
-// pocket-end
+	.req2(rom2_req),
+	.ack2(rom2_ack)
 );
 
 reg        cart_wr_addr0;
@@ -208,11 +212,12 @@ always @(posedge clk_ram) begin
 
 // pocket: three deletions in one region. The reads whose source is gone: Master
 // System boot ROM and work RAM, the FM detect register, Pier Solar's protection and
-// SPI EEPROM, the J-Cart pad and the SVP. Port A is 64 KB, the size of the APF save
+// SPI EEPROM, and the J-Cart pad. Port A is 64 KB, the size of the APF save
 // slot, not upstream's 128 KB. And nothing shares the port any more, so the mux
 // starts at the EEPROM branch
 	if(md_sram_cs)     cart_data <= {sram_q,sram_q};
 	if(md_eeprom_cs)   cart_data <= md_eeprom_data;
+	if(svp_cs)         cart_data <= svp_data;
 	if(sf_cs)          cart_data <= sf_data;
 	if(chk_cs)         cart_data <= chk_data;
 end
@@ -244,40 +249,67 @@ end
 reg [16:1] ram_rst_a;
 always @(posedge clk) ram_rst_a <= ram_rst_a + 1'd1;
 
-// pocket: byte wide, and the fill runs off save_clear rather than cart_dl. There
-// is no SVP DRAM to share the port with. A word-wide port B needs 64 more M10Ks
-// than this device has left, plus the bypass logic that comes with a mixed width
-wire [15:0] sram2_addr;
-wire  [7:0] sram2_di;
+// pocket: upstream shares one 128 KB mixed-width RAM between the save SRAM and the
+// SVP DRAM; that shape needs more block RAM than this device has left, plus the
+// bypass logic a mixed width brings, so each bitstream keeps only its half. The
+// base build's save RAM is byte wide and 64 KB, the APF save slot, and fills off
+// save_clear rather than cart_dl. The SVP build swaps it for the DSP's 128 KB DRAM:
+// Virtua Racing has no battery RAM, so nothing reads sram_q there and the only
+// second client of the DRAM is the download fill, which never overlaps the DSP.
+// The fill is a flat FFFF: upstream's sram00_quirk zero-fill arm serves save-RAM
+// games, which never route to this build
 wire  [7:0] sram2_q;
-wire        sram2_wren;
+wire [15:0] svp_dram_q;
 
-always_comb begin
-	if(save_clear) begin
-		sram2_addr = ram_rst_a;
-		sram2_di   = sram00_quirk ? 8'h00 : 8'hFF;
-		sram2_wren = 1;
-	end
-	else begin
-		sram2_addr = save_addr;
-		sram2_di   = save_di;
-		sram2_wren = save_wr;
-	end
+generate
+if(SVP) begin
+	spram #(16,16) svp_dram
+	(
+		.clock(clk),
+		.address(cart_dl ? ram_rst_a : svp_dram_a),
+		.data(cart_dl ? 16'hFFFF : svp_dram_do),
+		.wren(cart_dl | svp_dram_we),
+		.q(svp_dram_q)
+	);
+
+	assign sram_q  = 0;
+	assign sram2_q = 0;
 end
+else begin
+	wire [15:0] sram2_addr;
+	wire  [7:0] sram2_di;
+	wire        sram2_wren;
 
-dpram #(16,8) ram
-(
-	.clock(clk),
-	.address_a(sram_addr),
-	.data_a(sram_di),
-	.wren_a(sram_wren),
-	.q_a(sram_q),
+	always_comb begin
+		if(save_clear) begin
+			sram2_addr = ram_rst_a;
+			sram2_di   = sram00_quirk ? 8'h00 : 8'hFF;
+			sram2_wren = 1;
+		end
+		else begin
+			sram2_addr = save_addr;
+			sram2_di   = save_di;
+			sram2_wren = save_wr;
+		end
+	end
 
-	.address_b(sram2_addr),
-	.data_b(sram2_di),
-	.wren_b(sram2_wren),
-	.q_b(sram2_q)
-);
+	dpram #(16,8) ram
+	(
+		.clock(clk),
+		.address_a(sram_addr),
+		.data_a(sram_di),
+		.wren_a(sram_wren),
+		.q_a(sram_q),
+
+		.address_b(sram2_addr),
+		.data_b(sram2_di),
+		.wren_b(sram2_wren),
+		.q_b(sram2_q)
+	);
+
+	assign svp_dram_q = 0;
+end
+endgenerate
 // pocket-end
 
 assign save_do     = sram2_q;
@@ -297,7 +329,11 @@ always @(posedge clk) begin
 		md_bank_sram <= 0;
 		md_bank_use <= 0;
 	end
-	else if (cart_lwr && cart_time) begin
+// pocket: the SSF2 banks key off the ROM size, not a quirk, so unlike the mappers below
+// they do not fall out of the SVP build on their own. Gating the write leaves the three
+// bank registers at reset and folds the banked arm of md_cart_addr away
+	else if (!SVP && cart_lwr && cart_time) begin
+// pocket-end
 		if(rom_mask[24:22]) begin
 			if(cart_addr[3:1]) begin
 				md_bank_use <= 1;
@@ -317,17 +353,85 @@ wire [24:1] md_cart_addr = realtec_quirk ? realtec_addr       :
                                            cart_addr - svp_dma;
 
 
-// pocket: the SVP is a second DSP core and a second SDRAM port, for one game. The
-// stubs keep the reads and the address arithmetic below verbatim: with svp_quirk 0
-// they fold away. svp_dma was the only reader of the cart_dma input, so that port is
-// dead now, kept connected so reviving any DMA-aware mapper needs no port change
-wire        svp_dma = 0;
-wire        svp_cs  = 0;
-wire        svp_quirk = 0;
+// SVP
+// pocket: upstream defines svp_dma and svp_cs inline; the declarations split off
+// here so the generate branches below can drive them per build
+wire        svp_dma;
+wire        svp_cs;
+// pocket-end
+
+wire [20:1] rom2_a;
+wire [15:0] rom2_data;
+wire        rom2_req;
+wire        rom2_ack;
+
+wire [15:0] svp_data;
+wire        svp_dtack_n;
+
+wire [15:0] svp_dram_a;
+wire [15:0] svp_dram_do;
+wire        svp_dram_we;
+
+// pocket: the DSP only exists in the SVP bitstream; the base branch drives constants
+// so the reads and the address arithmetic above stay verbatim and fold away, and
+// DRAM_DI is svp_dram_q rather than upstream's sram2_q because the shared save RAM
+// this device cannot afford is what made them one signal. Upstream qualifies all three
+// with svp_quirk, which the loader has already decided by serial, so it is 1 here; reset
+// covers the download, so the DSP still starts no earlier
+generate
+if(SVP) begin
+	assign svp_dma = cart_dma;
+	assign svp_cs  = ~svp_dtack_n;
+
+	reg svp_ce;
+	always @(posedge clk) svp_ce <= ~reset & ~svp_ce;
+
+	SVP svp
+	(
+		.CLK(clk),
+		.CE(svp_ce),
+		.RST_N(~reset),
+		.ENABLE(1),
+
+		.BUS_A(cart_addr[23:1]),
+		.BUS_DO(svp_data),
+		.BUS_DI(cart_data_wr),
+		.BUS_SEL(cart_oe | cart_lwr),
+		.BUS_RNW(~cart_lwr),
+		.BUS_DTACK_N(svp_dtack_n),
+		.DMA_ACTIVE(cart_dma),
+
+		.ROM_A(rom2_a),
+		.ROM_DI(rom2_data),
+		.ROM_REQ(rom2_req),
+		.ROM_ACK(rom2_ack),
+
+		.DRAM_A(svp_dram_a),
+		.DRAM_DI(svp_dram_q),
+		.DRAM_DO(svp_dram_do),
+		.DRAM_WE(svp_dram_we)
+	);
+end
+else begin
+	assign svp_dma = 0;
+	assign svp_cs = 0;
+	assign svp_data = 0;
+	assign svp_dtack_n = 1;
+	assign rom2_a = 0;
+	assign rom2_req = 0;
+	assign svp_dram_a = 0;
+	assign svp_dram_do = 0;
+	assign svp_dram_we = 0;
+end
+endgenerate
 // pocket-end
 
 // SRAM
-wire md_sram_cs = ~cart_ms && (cart_addr[23:21] == 1) && (md_bank_sram || (cart_addr >= rom_sz && ~&cart_addr[20:19])) && ~noram_quirk;
+// pocket: svp_quirk already sets noram_quirk, so this select is dead in the SVP build at
+// run time but not statically. Saying so drops the address compares, and with the sram
+// mux constant, save_change with them
+wire md_sram_cs = !SVP && ~cart_ms && (cart_addr[23:21] == 1) && (md_bank_sram || (cart_addr >= rom_sz && ~&cart_addr[20:19])) && ~noram_quirk;
+// pocket-end
 
 // EEPROM
 wire        md_eeprom_cs   = (eeprom_quirk[3:2] == 2'b01) ? (cart_addr[23:19] == 5'b00111) : (eeprom_quirk[2:0] && ((eeprom_bank & ~cart_addr[20]) || !eeprom_quirk[3]) && cart_addr[23:21] == 3'b001);
@@ -377,28 +481,45 @@ wire eeprom_sda = {eeprom_sdao & eeprom_sdai};
 //                                        C01     C01     C02     C16      C65       C08      C04
 wire [12:0] eeprom_mask[8] = '{13'h00, 13'h7f, 13'h7f, 13'hff, 13'h7ff, 13'h1fff, 13'h3ff, 13'h1ff};
 
-EPPROM_24CXX e24cxx
-(
-	.clk(clk),
-	.rst(reset),
-	.en(1),
+// pocket: the EEPROM engine is part of what the SVP bitstream sells to afford the
+// DSP; Virtua Racing has none, and the loader only routes Virtua Racing to that
+// build. sda_o high is the bus idle level, so a mis-routed EEPROM game sees a
+// device that never answers
+generate
+if(SVP) begin
+	assign eeprom_sdao = 1;
+	// The sram mux still reads these when eeprom_quirk hits; tie them off so
+	// save_change stays driven instead of floating with the 24CXX gone
+	assign eeprom_ram_a  = 0;
+	assign eeprom_ram_d  = 0;
+	assign eeprom_ram_we = 0;
+end
+else begin
+	EPPROM_24CXX e24cxx
+	(
+		.clk(clk),
+		.rst(reset),
+		.en(1),
 
-	.mode((eeprom_quirk[2:0] <= 3'b010) ? 2'd0 : (eeprom_quirk[2:0] == 3'b101) ? 2'd2 : 2'd1),
-	.mask(eeprom_mask[eeprom_quirk[2:0]]),
+		.mode((eeprom_quirk[2:0] <= 3'b010) ? 2'd0 : (eeprom_quirk[2:0] == 3'b101) ? 2'd2 : 2'd1),
+		.mask(eeprom_mask[eeprom_quirk[2:0]]),
 
-	.sda_i(eeprom_sdai),
-	.sda_o(eeprom_sdao),
-	.scl(eeprom_scl),
+		.sda_i(eeprom_sdai),
+		.sda_o(eeprom_sdao),
+		.scl(eeprom_scl),
 
-	.ram_addr(eeprom_ram_a),
-	.ram_d(eeprom_ram_d),
-	.ram_wr(eeprom_ram_we),
-	.ram_q(sram_q)
-);
+		.ram_addr(eeprom_ram_a),
+		.ram_d(eeprom_ram_d),
+		.ram_wr(eeprom_ram_we),
+		.ram_q(sram_q)
+	);
+end
+endgenerate
+// pocket-end
 
 
-// pocket: Pier Solar's SPI EEPROM and its protection reads cost ALMs this fit does
-// not have. ep_si/ep_sck/ep_hold/ep_cs keep their names so the SSF2 bank block
+// pocket: Pier Solar's SPI EEPROM and its protection reads are not built here.
+// ep_si/ep_sck/ep_hold/ep_cs keep their names so the SSF2 bank block
 // above needs no edit; pier_quirk is 0, so the branch that writes them is dead
 reg         ep_si, ep_sck, ep_hold, ep_cs;
 wire        pier_quirk = 0;
@@ -413,7 +534,10 @@ wire        schan_quirk = 0;
 // pocket-end
 
 // MK3U Trilogy 10MB version (13MB isn't compatible with real HW!)
-wire cart_cs_ext = ~cart_ms && (cart_addr[23:22] && cart_addr[23:20]<'hA) && (cart_addr < rom_sz);
+// pocket: Virtua Racing is 2 MB, so cart_addr[23:22] and cart_addr < rom_sz cannot both hold
+// in the SVP build; the fitter cannot see that, and the compares feed the dtack_ext path
+wire cart_cs_ext = !SVP && ~cart_ms && (cart_addr[23:22] && cart_addr[23:20]<'hA) && (cart_addr < rom_sz);
+// pocket-end
 
 // Realtec
 reg [21:17] realtec_bank;
@@ -536,8 +660,8 @@ always @(posedge clk) begin
 end
 
 // pocket: a Master System cart needs a 16 KB boot ROM, the Z80 bus decode and four
-// more mappers, and its FM needs the OPLL. The boot ROM alone is 13 of the 21 M10Ks
-// left, the Pocket has its own Master System core, and cart_ms is tied low here
+// more mappers, and its FM needs the OPLL. The Pocket has its own Master System
+// core, and cart_ms is tied low here
 wire [21:0] ms_cart_addr = 0;
 wire        ms_rom_cs = 0;
 wire        ms_ram_cs = 0;
@@ -546,9 +670,9 @@ wire        fm_det_cs = 0;
 
 //---------------------- Cart detect ---------------------------------------
 
-// pocket: pier_quirk, svp_quirk and schan_quirk are constants at their deletion
-// sites above, so they are gone from here
-reg       sram00_quirk, fmbusy_quirk, noram_quirk;
+// pocket: pier_quirk and schan_quirk are constants at their deletion sites above, so they
+// are gone from here. Only the base build writes svp_quirk, where it feeds noram_quirk
+reg       sram00_quirk, fmbusy_quirk, noram_quirk, svp_quirk;
 // pocket-end
 reg [3:0] eeprom_quirk;
 reg       realtec_quirk;
@@ -567,7 +691,7 @@ always @(posedge clk) begin
 	if(~old_dl && cart_dl) begin
 // pocket: the quirks whose logic is gone are constants now, there is no lightgun to
 // pick a type or a sensor delay for, and the battery-RAM flag clears with the rest
-		{sram00_quirk,fmbusy_quirk,noram_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
+		{sram00_quirk,fmbusy_quirk,noram_quirk,svp_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
 		sram_present <= 0;
 // pocket-end
 		crc_real <= 0;
@@ -584,7 +708,10 @@ always @(posedge clk) begin
 		if(cart_dl_addr == 'h188) cart_id[23:08] <= {cart_dl_data[7:0],cart_dl_data[15:8]};
 		if(cart_dl_addr == 'h18A) cart_id[07:00] <= cart_dl_data[7:0];
 		if(cart_dl_addr == 'h18E) crc <= {cart_dl_data[7:0],cart_dl_data[15:8]};
-		if(cart_dl_addr == 'h190) begin
+// pocket: the loader only ever sends Virtua Racing here, so this build detects nothing.
+// Gating the table drops it, cart_id, sp and crc
+		if(!SVP && cart_dl_addr == 'h190) begin
+// pocket-end
 			     if(cart_id[63:0] == "T-50446 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93
 			else if(cart_id[63:0] == "T-50516 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93 Championship Edition
 			else if(cart_id[63:0] == "T-50396 ") eeprom_quirk <= 4'b0001;  // X24C01 NHLPA Hockey 93
@@ -614,11 +741,13 @@ always @(posedge clk) begin
 			else if(cart_id[63:0] == "T-120096") eeprom_quirk <= 4'b0100;  // 24C16 JCART Micro Machines 2 - Turbo Tournament
 			else if(cart_id[63:0] == "T-120146") eeprom_quirk <= 4'b0101;  // 24C65 Brian Lara Cricket 96 / Shane Warne Cricket
 
-// pocket: pier_quirk, svp_quirk and schan_quirk are tied off at their deletion
-// sites above and the lightgun ports are gone, so the rows that set them (Pier
-// Solar, Virtua Racing, Game no Kanzume Otokuyou) and the sensor-delay block that
-// closed the upstream chain are dropped
+// pocket: pier_quirk and schan_quirk are tied off at their deletion sites above
+// and the lightgun ports are gone, so the rows that set them (Pier Solar, Game no
+// Kanzume Otokuyou) and the sensor-delay block that closed the upstream chain are
+// dropped
 			else if(cart_id[63:0] == "T-113016") noram_quirk  <= 1;        // Puggsy fake ram check
+			else if(cart_id[63:0] == "MK-1229 ") svp_quirk    <= 1;        // Virtua Racing EU/US
+			else if(cart_id[63:0] == "G-7001  ") svp_quirk    <= 1;        // Virtua Racing JP
 			else if(cart_id[63:0] == "T-35036 ") fmbusy_quirk <= 1;        // Hellfire US
 			else if(cart_id[63:0] == "T-25073 ") fmbusy_quirk <= 1;        // Hellfire JP
 			else if(cart_id[63:0] == "MK-1137-") fmbusy_quirk <= 1;        // Hellfire EU
@@ -633,20 +762,27 @@ always @(posedge clk) begin
 		end
 
 // pocket: "RA" at $1B0 is the header's battery-RAM marker, and APF wants the save
-// size in the data table before it will write a save file back
-		if(cart_dl_addr == 'h1B0 && {cart_dl_data[7:0],cart_dl_data[15:8]} == "RA") sram_present <= 1;
+// size in the data table before it will write a save file back. The SVP build has
+// no save RAM behind the flag, and announcing one would let APF overwrite a real
+// save file with zeroes if a battery game is ever run there by hand
+		if(cart_dl_addr == 'h1B0 && {cart_dl_data[7:0],cart_dl_data[15:8]} == "RA" && !SVP) sram_present <= 1;
 // pocket-end
 
 		if(cart_dl_addr == 'h7E100) realtec_id[31:16] <= {cart_dl_data[7:0],cart_dl_data[15:8]};
 		if(cart_dl_addr == 'h7E102) realtec_id[15: 0] <= {cart_dl_data[7:0],cart_dl_data[15:8]};
-		if(cart_dl_addr == 'h7E104 && realtec_id == "SEGA") realtec_quirk <= 1; // Earth Defend, Funny World & Balloon Boy, Whac-a-Critter
+// pocket: realtec_quirk is set from the ROM body, not the header, so the chain above does
+// not cover it. Stuck at 0 it takes the Realtec bank registers, realtec_addr and realtec_id
+		if(!SVP && cart_dl_addr == 'h7E104 && realtec_id == "SEGA") realtec_quirk <= 1; // Earth Defend, Funny World & Balloon Boy, Whac-a-Critter
+// pocket-end
 		
 		if(cart_dl_addr[24:9]) crc_real <= crc_real + {cart_dl_data[7:0],cart_dl_data[15:8]};
 		
 		if(sf_quirk || svp_quirk || eeprom_quirk || pier_quirk) noram_quirk <= 1;
 	end
 	
-	if(~cart_dl) begin
+// pocket: the checksum quirks key off crc_real, so gating here drops that whole-ROM adder too
+	if(~cart_dl && !SVP) begin
+// pocket-end
 		if(crc == 'h0000 && crc_real == 'h7037) chk_quirk <= 1; // Ma Jiang Qing Ren - Ji Ma Jiang Zhi
 		if(crc == 'h0000 && crc_real == 'h3b95) chk_quirk <= 1; // Super Majon Club
 		if(crc == 'hffff && crc_real == 'h0474) chk_quirk <= 2; // Super Mario 2 1998
@@ -657,8 +793,9 @@ end
 assign ym2612_quirk = fmbusy_quirk;
 
 // pocket: an EEPROM cart carries no battery-RAM marker in its header, so APF's save
-// size has to come from the quirk instead
-assign eeprom_present = |eeprom_quirk;
+// size has to come from the quirk instead. Never in the SVP build, whose EEPROM
+// engine is gone: the flag would let APF overwrite a real save file with garbage
+assign eeprom_present = !SVP && |eeprom_quirk;
 // pocket-end
 
 endmodule
