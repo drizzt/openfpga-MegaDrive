@@ -596,6 +596,11 @@ module core_top (
   // Composite-style horizontal blend (cofi), the MiSTer Composite Blend option
   reg cfg_blend = 0;
 
+  // MiSTer's h40corr. video_cond takes it as an input, but there it only picks a row of
+  // the arx/ary table, and the Pocket reads its aspect out of video.json instead. So the
+  // bit picks a scaler slot here and video_cond's own port stays tied off
+  reg cfg_arcorr = 0;
+
   localparam [13:0] RESET_PULSE = 14'd8000;  // ~108 us at 74.25 MHz
 
   reg  [13:0] reset_counter = 0;
@@ -631,6 +636,9 @@ module core_top (
         end
         32'h00000024: begin
           cfg_blend <= bridge_wr_data[0];
+        end
+        32'h00000028: begin
+          cfg_arcorr <= bridge_wr_data[0];
         end
         32'hF0000000: begin
           reset_counter <= RESET_PULSE;
@@ -1348,6 +1356,14 @@ module core_top (
       .clk(clk_vid)
   );
 
+  wire cfg_arcorr_s;
+
+  synch_3 arcorr_sync (
+      .i  (cfg_arcorr),
+      .o  (cfg_arcorr_s),
+      .clk(clk_vid)
+  );
+
   // The VDP syncs come out active low, the filler's edge detects want active high
   wire        vid_hs = ~core_hs;
   wire        vid_vs = ~core_vs;
@@ -1386,6 +1402,7 @@ module core_top (
   reg prev_de = 0;
   reg prev_vs = 0;
   reg slot_h32 = 0;
+  reg slot_arcorr = 0;
   reg [7:0] latched_snap_index = 0;
 
   always @(posedge clk_vid) begin
@@ -1397,12 +1414,15 @@ module core_top (
     if (video_vs && ~prev_vs) begin
       latched_snap_index <= snap_index;
       slot_h32           <= h32_s;
+      slot_arcorr        <= cfg_arcorr_s;
     end
 
     if (~filler_de && prev_de) begin
-      // scaler_modes: {h32, v30}, so 0 = 320x224, 1 = 320x240, 2 = 256x224,
-      // 3 = 256x240. SNAP_POINTS puts 240 at index 0, so v30 is ~snap_index[0]
-      video_rgb_reg <= {9'b0, slot_h32, ~latched_snap_index[0], 13'b0};
+      // scaler_modes: {arcorr, h32, v30}, so 0 = 320x224, 1 = 320x240, 2 = 256x224,
+      // 3 = 256x240, 4 = 320x224 corrected, 5 = 320x240 corrected. SNAP_POINTS puts
+      // 240 at index 0, so v30 is ~snap_index[0]. Upstream's h40corr only moves the
+      // H40 row of the aspect table, so ~slot_h32 keeps H32 out of the corrected pair
+      video_rgb_reg <= {8'b0, slot_arcorr & ~slot_h32, slot_h32, ~latched_snap_index[0], 13'b0};
     end else if (filler_de) begin
       video_de_reg  <= 1;
       video_rgb_reg <= filler_rgb;

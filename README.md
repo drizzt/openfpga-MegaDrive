@@ -88,6 +88,11 @@ without it.
 cable. Effects drawn as thin stripes, such as Sonic's waterfalls, become
 translucent instead of striped.
 
+**Aspect Ratio** picks how wide the picture is drawn. **Original** matches a
+period television. **Corrected** stretches the wider of the two Mega Drive
+screen modes so its pixels come out square, which suits games that were drawn
+on a computer monitor. Games in the narrower mode look the same either way.
+
 ### Controls
 
 | Pocket | Mega Drive |
