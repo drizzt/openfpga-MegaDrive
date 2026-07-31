@@ -8,7 +8,8 @@
 //
 // Derived from agg23/openfpga-SNES support/loader.asm: the slot numbering, the bitstream select and
 // the error path are its, the SNES cartridge work (SMC header detection, ROM size
-// calculation, check_header.asm) is dropped. util.asm is that repo's verbatim.
+// calculation, check_header.asm) is dropped. util.asm is that repo's too, with the seek()
+// and read() failure exits rerouted through release_and_exit below.
 
 architecture chip32.vm
 output "loader.bin", create
@@ -41,6 +42,12 @@ include "util.asm"
 align(2)
 
 start:
+// The menu is closed by the time the VM runs, so the previous game is unpaused and plays
+// through the whole open/seek/read unless the flag goes up first
+ld r1,#download_addr
+ld r2,#1
+pmpw r1,r2
+
 // ld sets the zero flag, so the error message is staged before the open
 ld r14,#rom_err_msg
 ld r1,#cart_dataslot
@@ -152,7 +159,7 @@ pmpw r1,r2
 
 ld r1,#download_addr
 ld r2,#1
-pmpw r1,r2                  // downloading = 1, core held in reset
+pmpw r1,r2                  // downloading = 1 again, core r0 clears the register on a switch
 
 ld r3,#cart_dataslot
 ld r14,#rom_err_msg
@@ -177,6 +184,14 @@ ld r14,#generic_err_msg
 
 print_error_and_exit:
 printf r14
+
+// The flag start: raises gates save_clear as well as reset, so exiting with it up holds
+// the save RAM in clear. Safe to drop here: dataslot_allcomplete never rises on a failed
+// load, so the core stays off the unloaded SDRAM anyway
+release_and_exit:
+ld r1,#download_addr
+ld r2,#0
+pmpw r1,r2
 exit 1
 
 rom_err_msg:

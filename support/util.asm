@@ -13,7 +13,10 @@ macro seek() {
   ld r14,#seek_err
   printf r14
   hex.l r1
-  exit 1
+  // pocket: the download flag is up across the header read and has to come down on the way
+  // out. Clobbers r1 and r2, hence after the hex
+  jp release_and_exit
+  // pocket-end
 
   seek_end:
 }
@@ -30,7 +33,9 @@ macro read() {
   ld r14,#read_err
   printf r14
   hex.l r1
-  exit 1
+  // pocket: same as seek() above
+  jp release_and_exit
+  // pocket-end
 
   read_end:
 }
