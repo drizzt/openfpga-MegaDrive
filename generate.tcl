@@ -1,6 +1,7 @@
 # pocket: derived from agg23/openfpga-SNES generate.tcl, a bare project_open / execute_flow /
 # project_close plus argv-driven selection of bitstream variants. The variant
-# selection is kept, because this core ships NTSC and PAL off one revision; the
+# selection is kept, because this core ships four bitstreams (NTSC, PAL and their
+# SVP twins) off one revision; the
 # snapshot guard below, the STA report pass and the non-zero exit for CI are local.
 
 package require ::quartus::project
@@ -8,13 +9,17 @@ package require ::quartus::flow
 
 set base_dir [pwd]
 
-# One revision builds both bitstreams: a second revision would fork the ~35 tuned
-# assignments in megadrive_pocket.qsf and they would drift apart
+# One revision builds every bitstream: a second revision would fork the ~35 tuned
+# assignments in megadrive_pocket.qsf and they would drift apart. The svp variants
+# trade the cartridge's save hardware for Virtua Racing's DSP, which does not fit
+# next to the full core.
 set variant [expr {$argc > 0 ? [lindex $argv 0] : "ntsc"}]
 switch -- $variant {
-    ntsc { set pal_param '0 }
-    pal  { set pal_param '1 }
-    default { error "unknown variant \"$variant\", expected ntsc or pal" }
+    ntsc     { set pal_param '0; set svp_param '0 }
+    pal      { set pal_param '1; set svp_param '0 }
+    ntsc_svp { set pal_param '0; set svp_param '1 }
+    pal_svp  { set pal_param '1; set svp_param '1 }
+    default { error "unknown variant \"$variant\", expected ntsc, pal, ntsc_svp or pal_svp" }
 }
 
 # Quartus re-stamps QUARTUS_VERSION / LAST_QUARTUS_VERSION into these on open and
@@ -40,6 +45,7 @@ set build_status [catch {
     project_open -force -revision megadrive_pocket projects/megadrive_pocket.qpf
     set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
     set_parameter -name PAL -entity core_top $pal_param
+    set_parameter -name SVP -entity core_top $svp_param
     execute_flow -compile
     project_close
 

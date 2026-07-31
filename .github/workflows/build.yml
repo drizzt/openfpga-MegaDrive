@@ -41,7 +41,7 @@ jobs:
         # Not derived from anything: build.sh rejects a name it does not know, and
         # dropping one here fails the package job, where install_binaries.sh works
         # off the bitstream list in core.json and finds this one missing.
-        variant: [ntsc, pal]
+        variant: [ntsc, pal, ntsc_svp, pal_svp]
 
     env:
       # Repository variable, so the registry can be changed without a commit.

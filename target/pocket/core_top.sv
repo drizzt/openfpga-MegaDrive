@@ -302,12 +302,15 @@ module core_top (
   assign vpll_feed               = 1'bZ;
 
 
-  // pocket: two bitstreams, not one. The MD master clock is baked into the PLL, so PAL
+  // pocket: four bitstreams, not one. The MD master clock is baked into the PLL, so PAL
   // is a hand-edited twin of the generated mf_pllbase and generate.tcl picks between
-  // them with this parameter; it is not runtime settable. The wire names carry the NTSC
-  // figures in both. dram_clk is not driven here either, rtl/upstream/sdram.sv drives it
-  // off its own altddio_out
+  // them with this parameter; it is not runtime settable. SVP swaps the cartridge's
+  // save hardware for Virtua Racing's DSP, which the device cannot fit next to the
+  // full core, and the Chip32 loader picks that build by cartridge serial. The wire
+  // names carry the NTSC figures in both regions. dram_clk is not driven here either,
+  // rtl/upstream/sdram.sv drives it off its own altddio_out
   parameter PAL = 1'b0;
+  parameter SVP = 1'b0;
 
 
   //
@@ -920,7 +923,9 @@ module core_top (
     end
   end
 
-  cartridge cartridge (
+  cartridge #(
+      .SVP(SVP)
+  ) cartridge (
       .clk        (clk_sys_53_69),
       .clk_ram    (clk_md_107_39),
       .reset      (sys_reset),
@@ -1193,14 +1198,14 @@ module core_top (
       .ram_z80_wren   (ram_z80_wren),
       .ram_z80_o      (ram_z80_o),
 
-      // TMSS ROM is not loaded, so the block stays bypassed, saving 20 ALM
+      // TMSS ROM is not loaded, so the block stays bypassed
       .tmss_enable (1'b0),
       .tmss_data   (16'd0),
       .tmss_address(),
 
       // cart_oe comes off vdp_dma_oe_early, the same strobe a cycle earlier, so
       // the plain output of that name is left dangling. cart_dma gates the menu
-      // pause; the cartridge itself does not care whether a read is a DMA
+      // pause and, in the svp builds, the cartridge's DSP DMA path
       .M3              (1'b1),          // MD mode, no Master System
       .cart_address    (cart_addr),
       .cart_data       (cart_data),

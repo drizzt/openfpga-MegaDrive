@@ -40,11 +40,10 @@ set_clock_groups -asynchronous \
 # Everything crossing general[1] into a dot clock is dot paced: video_cond updates
 # rgb on its ce_pix, once per dot, and its sync and blanking flags change once per
 # line at most. The dot is 16 general[1] cycles in H40 and 20 in H32, so charging
-# the crossing one 9.31 ns cycle is 16x tighter than the value is actually held for,
-# and the 2.6 ns this domain used to have was placement luck: with the dot clock
-# behind a mux the same paths land at -7.1. One latch cycle of relief is the whole
-# stable window, which makes it the ceiling too, not slack to spend: a path that
-# really used 149 ns would capture the next dot and shift the picture one pixel
+# the crossing a single cycle is far tighter than the value is actually held for.
+# One latch cycle of relief is the whole stable window, which makes it the ceiling
+# too, not room to spend: a path that really used a whole dot would capture the
+# next one and shift the picture one pixel
 set_multicycle_path -setup \
  -from {ic|mp1|altera_pll_i|general[1].gpll~PLL_OUTPUT_COUNTER|divclk} \
  -to   {ic|mp1|altera_pll_i|general[2].gpll~PLL_OUTPUT_COUNTER|divclk} 2
@@ -62,12 +61,9 @@ set_multicycle_path -hold \
 derive_clock_uncertainty
 
 # pocket: agg23 needs nothing here because its audio filters only ever run at
-# audio_mclk, where a multiply has some 81 ns to land. audio_cond puts an iir_filter
-# on clk_sys_53_69, where one cycle is not enough.
-#
-# The IIR filters carry the worst setup path in the core: one clk_sys_53_69
-# cycle is not enough for a 16x40 multiply, a 37x24 multiply and the add that
-# follows them, and psg_iir's accumulator missed by 3.850 ns.
+# audio_mclk, where a multiply has a whole sample period to land. audio_cond puts an
+# iir_filter on clk_sys_53_69, where one cycle is not enough for a 16x40 multiply, a
+# 37x24 multiply and the add that follows them.
 #
 # Nothing on those paths moves every cycle. Every register listed here is gated
 # by the filter's ce, and so is every register that feeds it: intreg takes the

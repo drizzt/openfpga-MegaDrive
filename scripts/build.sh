@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # pocket: no upstream counterpart, wraps Quartus (local install or the pinned container) and loops the
-# ntsc and pal variants, keeping a per-variant copy of the reports.
+# ntsc, pal, ntsc_svp and pal_svp variants, keeping a per-variant copy of the reports.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,7 +19,10 @@ QUARTUS_IMAGE="${QUARTUS_IMAGE:-docker.io/raetro/quartus:21.1}"
 # bind mount below relies on. Set CONTAINER_RUNTIME=docker on a docker-only host
 CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-podman}"
 
-SPECS=(ntsc:md_ntsc pal:md_pal)
+# The svp bitstreams carry Virtua Racing's DSP instead of the save hardware; the
+# Chip32 loader picks them by cartridge serial. Their filenames stay under APF's
+# 15-character limit for core.json entries.
+SPECS=(ntsc:md_ntsc pal:md_pal ntsc_svp:mds_ntsc pal_svp:mds_pal)
 
 # One list: the lookup, the default build order and the closing message all come off it
 declare -A BITSTREAM

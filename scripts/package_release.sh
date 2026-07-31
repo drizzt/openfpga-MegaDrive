@@ -36,6 +36,13 @@ for core_json in "$PROJECT_DIR"/pkg/pocket/Cores/*/core.json; do
   # purpose, see "Installation" in the README.
   [ -d "$PROJECT_DIR/pkg/pocket/Assets/${pid}" ] || {
     echo "$pkgdir: missing pkg/pocket/Assets/${pid}/ for platform '$pid'" >&2; exit 1; }
+  # The svp bitstreams build last, so an interrupted build leaves fresh md_* next
+  # to absent mds_*; the zip would ship anyway and the Pocket only fails when the
+  # loader picks the missing variant. Require every core.json bitstream up front.
+  for rbf in $(jq -r '.core.cores[].filename' "$core_json"); do
+    [ -f "$PROJECT_DIR/pkg/pocket/Cores/${pkgdir}/${rbf}" ] || {
+      echo "$pkgdir: core.json references missing bitstream '$rbf'" >&2; exit 1; }
+  done
 
   # ${INFIX:+_$INFIX} adds the _<infix> segment only when INFIX is non-empty.
   zip_name="openfpga-${shortname}${INFIX:+_$INFIX}_${VERSION}.zip"
