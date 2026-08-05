@@ -20,7 +20,7 @@ build_output/
 openfpga-*.zip
 pkg/pocket/Cores/*/*.rbf_r
 pkg/pocket/Cores/*/loader.bin
-# assembled in place by scripts/build_loader.sh, removed on success
+# assembled in place by scripts/build_loader.sh, moved to build_output/ on success
 support/loader.bin
 # regenerated pre-flow by platform/pocket/build_id_gen.tcl
 platform/pocket/build_id.mif
