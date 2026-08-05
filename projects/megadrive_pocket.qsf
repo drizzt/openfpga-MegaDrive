@@ -68,30 +68,6 @@ set_global_assignment -name ACTIVE_SERIAL_CLOCK FREQ_100MHZ
 set_global_assignment -name ROUTER_CLOCKING_TOPOLOGY_ANALYSIS ON
 set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
 
-# pocket: retuned against a fit that sits at 99% ALM, where agg23's settings assume
-# room to spare. PLACEMENT_EFFORT_MULTIPLIER 4.0 and PHYSICAL_SYNTHESIS_EFFORT
-# EXTRA are gone because at this density they cost hours and buy nothing, AUTO FIT
-# became STANDARD FIT for the same reason, and PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA
-# is on because area is the binding constraint here, not slack.
-# let the fitter spread the design out rather than pack it
-set_global_assignment -name ALM_REGISTER_PACKING_EFFORT LOW
-set_global_assignment -name QII_AUTO_PACKED_REGISTERS NORMAL
-set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA ON
-set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION AUTOMATICALLY
-set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
-
-# each of these costs ALMs and buys timing
-set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC ON
-set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION ON
-set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING ON
-set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
-set_global_assignment -name ROUTER_LCELL_INSERTION_AND_LOGIC_DUPLICATION ON
-set_global_assignment -name AUTO_DELAY_CHAINS_FOR_HIGH_FANOUT_INPUT_PINS ON
-set_global_assignment -name ECO_OPTIMIZE_TIMING ON
-set_global_assignment -name FINAL_PLACEMENT_OPTIMIZATION ALWAYS
-set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM
-# pocket-end
-
 # ==============================================================================
 # Platform/Core Assignments
 # ==============================================================================
@@ -99,17 +75,9 @@ source ../platform/pocket/pocket.tcl
 set_global_assignment -name QIP_FILE ../rtl/core.qip
 
 # ==============================================================================
-# pocket: a full two-variant fit of this core runs long enough that the multicorner
-# pass and a cold recompile dominate the iteration loop, so both are traded away.
-# They override a pocket.tcl default, hence sitting after the source line.
-set_global_assignment -name TIMING_ANALYZER_MULTICORNER_ANALYSIS OFF
-# SMART_RECOMPILE is for the local loop. It buys CI nothing, which always builds from
-# a clean tree, and a stale database has to be cleared by hand after an aborted fit
-set_global_assignment -name SMART_RECOMPILE ON
-
-# 68k.v reads its microcode with $readmemb, which resolves relative to the project
-# directory, and the tables live in the vendored tree. Nothing else here needs a
-# search path
+# pocket: 68k.v reads its microcode with $readmemb, which resolves relative to the
+# project directory, and the tables live in the vendored tree. Nothing else here
+# needs a search path
 set_global_assignment -name SEARCH_PATH "../rtl/upstream/nuked-md"
 
 # The H32/H40 dot clock mux is a LUT with 136 clock loads, the video output registers
