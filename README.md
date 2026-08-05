@@ -93,6 +93,10 @@ period television. **Corrected** stretches the wider of the two Mega Drive
 screen modes so its pixels come out square, which suits games that were drawn
 on a computer monitor. Games in the narrower mode look the same either way.
 
+**Hide Overscan** blacks out the top and bottom 8 rows of the picture, which a
+television would normally have masked. Some games leave rubbish there: Virtua
+Racing flickers along both edges. On by default.
+
 ### Controls
 
 | Pocket | Mega Drive |

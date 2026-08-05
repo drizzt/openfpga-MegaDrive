@@ -134,6 +134,17 @@
             "value": 1
           }
         ]
+      },
+      {
+        "name": "Hide Overscan",
+        "id": 9,
+        "type": "check",
+        "enabled": true,
+        "address": "0x0000002C",
+        "persist": true,
+        "writeonly": true,
+        "defaultval": 1,
+        "value": 1
       }
     ],
     "messages": []

@@ -14,6 +14,10 @@ module scanline_filler #(
     input wire vblank_in,
     input wire hblank_in,
 
+    // pocket: Hide Overscan, which upstream has no equivalent of
+    input wire crop_en,
+    // pocket-end
+
     input wire [23:0] rgb_in,
 
     output reg  hsync,
@@ -40,6 +44,17 @@ module scanline_filler #(
   wire extended_vblank = vblank_in && ~(output_line_count < snap_point && output_line_count > 0)  /* synthesis keep */;
   wire de_blanks = ~(hblank_in || extended_vblank);
 
+  // pocket: CROP_LINES: rows blanked per edge for Hide Overscan, 8 covering Virtua Racing's
+  // flicker. crop_end is latched already subtracted: snap_point still reads 224 into line 225
+  // of a 240 line frame, so a live compare blanks 216-224 mid-picture and adds to the rgb path
+  localparam int CROP_LINES = 8;
+
+  reg [8:0] crop_end = '1;
+
+  wire crop_row = crop_en && (output_line_count < CROP_LINES[8:0] ||
+                              output_line_count >= crop_end);
+  // pocket-end
+
   always @(posedge clk) begin
     prev_hsync <= hsync_in;
     prev_vsync <= vsync_in;
@@ -54,6 +69,9 @@ module scanline_filler #(
       // Reset line count on start of vsync
       output_line_count  <= 0;
       visible_line_count <= 0;
+      // pocket: the instant core_top latches snap_index for the scaler slot too
+      crop_end <= snap_point - CROP_LINES[8:0];
+      // pocket-end
     end
 
     if (de_blanks && ~prev_de) begin
@@ -75,12 +93,12 @@ module scanline_filler #(
       de <= 1;
       if (vblank_in) begin
         // Extended blanking
-        rgb <= 0;
         drawing_black <= 1;
-      end else begin
-        // Normal pixels
-        rgb <= rgb_in;
       end
+      // pocket: folded into the padding rows' mux, a second 24-bit mux costs 24 ALUTs the SVP
+      // fit lacks. drawing_black stays on vblank_in so a blanked row still counts as visible
+      rgb <= (vblank_in || crop_row) ? 24'd0 : rgb_in;
+      // pocket-end
     end else if (~de_blanks && prev_de) begin
       // Falling edge of drawing
       output_line_count <= output_line_count + 1;

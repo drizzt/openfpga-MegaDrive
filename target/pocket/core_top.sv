@@ -604,6 +604,10 @@ module core_top (
   // bit picks a scaler slot here and video_cond's own port stays tied off
   reg cfg_arcorr = 0;
 
+  // Blanks the rows a CRT masked, rather than MiSTer's real crop in video_freak: a changed
+  // height needs its own video.json slot and 6 of the 8 are taken
+  reg cfg_overscan = 1;
+
   localparam [13:0] RESET_PULSE = 14'd8000;  // ~108 us at 74.25 MHz
 
   reg  [13:0] reset_counter = 0;
@@ -642,6 +646,9 @@ module core_top (
         end
         32'h00000028: begin
           cfg_arcorr <= bridge_wr_data[0];
+        end
+        32'h0000002C: begin
+          cfg_overscan <= bridge_wr_data[0];
         end
         32'hF0000000: begin
           reset_counter <= RESET_PULSE;
@@ -1354,18 +1361,12 @@ module core_top (
   assign video_skip = 0;
 
   wire h32_s;
-
-  synch_3 h32_sync (
-      .i  (h32),
-      .o  (h32_s),
-      .clk(clk_vid)
-  );
-
   wire cfg_arcorr_s;
+  wire cfg_overscan_s;
 
-  synch_3 arcorr_sync (
-      .i  (cfg_arcorr),
-      .o  (cfg_arcorr_s),
+  synch_3 #(3) vid_cfg_sync (
+      .i  ({h32, cfg_arcorr, cfg_overscan}),
+      .o  ({h32_s, cfg_arcorr_s, cfg_overscan_s}),
       .clk(clk_vid)
   );
 
@@ -1393,6 +1394,7 @@ module core_top (
 
       .vblank_in(core_vblank),
       .hblank_in(core_hblank),
+      .crop_en  (cfg_overscan_s),
       .rgb_in   (core_rgb),
 
       .hsync(video_hs),
