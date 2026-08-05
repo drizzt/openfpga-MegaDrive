@@ -17,7 +17,4 @@ RBF_R="$PROJECT_DIR/build_output/$NAME"
 
 mkdir -p "$PROJECT_DIR/build_output"
 python3 "$SCRIPT_DIR/reverse_bitstream.py" "$RBF" "$RBF_R"
-for d in "$PROJECT_DIR"/pkg/pocket/Cores/*/; do
-  cp -f "$RBF_R" "$d/$NAME"
-  echo "$NAME -> ${d#"$PROJECT_DIR/"}$NAME"
-done
+"$SCRIPT_DIR/install_binaries.sh" "$NAME"

@@ -30,20 +30,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  # The four bitstreams are compiled by build.yml, one job each. Nothing in them
+  # depends on the version, so the bump happens afterwards, in the job that
+  # actually publishes: a failed compile then leaves nothing behind to undo.
+  build:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
        github.event.pull_request.head.ref == 'vendor/upstream')
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.event.repository.default_branch }}
+
+  release:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      # Repository variable, so the registry can be changed without a commit.
-      # Unset lands on build.sh's Docker Hub default.
-      QUARTUS_IMAGE: ${{ vars.QUARTUS_IMAGE }}
 
     steps:
       - name: Resolve bump
@@ -74,15 +80,25 @@ jobs:
           # rejected).
           token: ${{ secrets.CUSTOM_GH_TOKEN }}
 
-      # Before the build, so the packaged core.json carries the new version.
       - name: Bump version
         id: version
         run: |
           NEW=$(scripts/bump_version.sh "${{ steps.bump.outputs.bump }}")
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
-      - name: Build core
-        uses: ./.github/actions/build-core
+      # The compile jobs' own artifacts, loader.bin included, rather than the
+      # pocket-tree one: that tree's core.json predates the bump above.
+      - name: Download binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bitstream-*
+          merge-multiple: true
+          path: build_output
+
+      - name: Assemble core packages
+        run: |
+          scripts/install_binaries.sh
+          scripts/check_packages.sh
 
       - name: Commit version bump
         run: |

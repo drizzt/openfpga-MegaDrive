@@ -11,8 +11,8 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # where JTAG is needed: it does not work on 21.1 here.
 LOCAL_QUARTUS="${QUARTUS_DIR:-/opt/intelFPGA_lite/21.1/quartus}"
 
-# The toolchain pin, used here and by CI (.github/actions/build-core runs this
-# script), so there is one image to bump.
+# The toolchain pin, used here and by CI (the compile job in
+# .github/workflows/build.yml runs this script), so there is one image to bump.
 QUARTUS_IMAGE="${QUARTUS_IMAGE:-docker.io/raetro/quartus:21.1}"
 
 # Rootless podman keeps the build output owned by the invoking user, which the

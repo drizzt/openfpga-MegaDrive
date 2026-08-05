@@ -32,9 +32,9 @@ fi
 
 cd "$(dirname "$ASM")"
 "$BASS_BIN" "$(basename "$ASM")"
+# Lands next to the bitstreams rather than straight into the packages, so CI can
+# carry every build product between jobs as one artifact. build_output exists by
+# now either way: bass itself lives in it.
+mv -f loader.bin "$PROJECT_DIR/build_output/loader.bin"
 # the per-platform core packages share one loader
-for d in "$PROJECT_DIR"/pkg/pocket/Cores/*/; do
-    cp -f loader.bin "$d/loader.bin"
-    echo "loader.bin -> ${d#"$PROJECT_DIR/"}loader.bin"
-done
-rm -f loader.bin
+"$SCRIPT_DIR/install_binaries.sh" loader.bin
