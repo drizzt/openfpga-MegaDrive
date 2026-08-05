@@ -25,10 +25,7 @@ for core_json in pkg/pocket/Cores/*/core.json; do
       echo "$core_json: bitstream filename '$fn' is ${#fn} characters, limit is 15"
       fail=1
     fi
-  done < <(python3 -c '
-import json, sys
-for c in json.load(open(sys.argv[1]))["core"].get("cores", []):
-    print(c["filename"])' "$core_json")
+  done < <(jq -r '.core.cores[].filename' "$core_json")
 done
 
 # Each of these is one shared artifact fanned out to every package. They are
@@ -36,12 +33,12 @@ done
 # present in only some packages is drift. Compared per filename, so the NTSC and
 # PAL bitstreams are never compared to each other. The bitstream names come from
 # core.json rather than a list here, so a new variant cannot be forgotten.
+total=$(ls -d pkg/pocket/Cores/*/ | wc -l)
 for bin in $(jq -r '.core.cores[].filename' pkg/pocket/Cores/*/core.json | sort -u) loader.bin; do
   # `|| true`: with set -e + pipefail, a glob that matches nothing makes ls
   # exit non-zero and aborts the script before the "absent everywhere" guard
   # below can run (the case on a fresh checkout, where binaries aren't built).
   present=$(ls pkg/pocket/Cores/*/"$bin" 2>/dev/null | wc -l || true)
-  total=$(ls -d pkg/pocket/Cores/*/ | wc -l)
   if [ "$present" -eq 0 ]; then
     continue
   elif [ "$present" -ne "$total" ]; then

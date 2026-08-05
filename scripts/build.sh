@@ -19,14 +19,23 @@ QUARTUS_IMAGE="${QUARTUS_IMAGE:-docker.io/raetro/quartus:21.1}"
 # bind mount below relies on. Set CONTAINER_RUNTIME=docker on a docker-only host
 CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-podman}"
 
-"$SCRIPT_DIR/build_loader.sh"
-
 # The svp bitstreams carry Virtua Racing's DSP instead of the save hardware; the
 # Chip32 loader picks them by cartridge serial. Their filenames stay under APF's
 # 15-character limit for core.json entries.
-for spec in ntsc:md_ntsc pal:md_pal ntsc_svp:mds_ntsc pal_svp:mds_pal; do
-  variant=${spec%:*}
-  out=${spec#*:}.rbf_r
+SPECS=(ntsc:md_ntsc pal:md_pal ntsc_svp:mds_ntsc pal_svp:mds_pal)
+
+# One list: the lookup, the default build order and the closing message all come off it
+declare -A BITSTREAM
+for spec in "${SPECS[@]}"; do BITSTREAM[${spec%:*}]=${spec#*:}; done
+
+(( $# == 0 )) && set -- "${SPECS[@]%:*}"
+
+"$SCRIPT_DIR/build_loader.sh"
+
+for variant; do
+  # :? rejects a typo before Quartus starts, not after a build lands under a name
+  # no core.json lists
+  out="${BITSTREAM[$variant]:?unknown variant, expected one of: ${SPECS[*]%:*}}.rbf_r"
 
   if [ -x "$LOCAL_QUARTUS/bin/quartus_sh" ]; then
     echo "=== Starting Quartus build, $variant (local: $LOCAL_QUARTUS) ==="
@@ -65,4 +74,4 @@ for spec in ntsc:md_ntsc pal:md_pal ntsc_svp:mds_ntsc pal_svp:mds_pal; do
 done
 
 echo "Done"
-echo "Bitstreams copied to: pkg/pocket/Cores/*/{md_ntsc,md_pal,mds_ntsc,mds_pal}.rbf_r"
+echo "Bitstreams copied to: pkg/pocket/Cores/*/{$(IFS=,; echo "${SPECS[*]#*:}")}.rbf_r"
