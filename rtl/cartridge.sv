@@ -18,7 +18,7 @@
 //============================================================================
 
 // Adapted from rtl/upstream/cartridge.sv. Everything that does not fit, or
-// that has no consumer on the Pocket, is gone: Pier Solar, the Sega Channel,
+// that has no consumer on the Pocket, is gone: the Sega Channel,
 // the Master System cart path with its boot ROM and OPLL, the J-Cart
 // and the lightgun. The SVP does not fit either, but Virtua Racing needs it, so it
 // is behind the SVP parameter and ships as its own bitstream that trades the save
@@ -211,11 +211,12 @@ always @(posedge clk_ram) begin
 	end
 
 // pocket: three deletions in one region. The reads whose source is gone: Master
-// System boot ROM and work RAM, the FM detect register, Pier Solar's protection and
-// SPI EEPROM, and the J-Cart pad. Port A is 64 KB, the size of the APF save
-// slot, not upstream's 128 KB. And nothing shares the port any more, so the mux
-// starts at the EEPROM branch
+// System boot ROM and work RAM, the FM detect register and the J-Cart pad. Port A
+// is 64 KB, the size of the APF save slot, not upstream's 128 KB. And the Master
+// System no longer shares the port, so the mux starts at the Pier Solar branch
 	if(md_sram_cs)     cart_data <= {sram_q,sram_q};
+	if(pier_prot_cs)   cart_data <= pier_prot_data;
+	if(pier_eeprom_cs) cart_data <= pier_eeprom_data;
 	if(md_eeprom_cs)   cart_data <= md_eeprom_data;
 	if(svp_cs)         cart_data <= svp_data;
 	if(sf_cs)          cart_data <= sf_data;
@@ -228,8 +229,13 @@ wire  [7:0] sram_q;
 wire        sram_wren;
 
 always_comb begin
-	if(eeprom_quirk) begin
+	if(pier_quirk) begin
 // pocket-end
+		sram_addr = m95_addr;
+		sram_di   = m95_di;
+		sram_wren = m95_rnw;
+	end
+	else if(eeprom_quirk) begin
 		sram_addr = eeprom_ram_a;
 		sram_di   = eeprom_ram_d;
 		sram_wren = eeprom_ram_we;
@@ -518,14 +524,69 @@ endgenerate
 // pocket-end
 
 
-// pocket: Pier Solar's SPI EEPROM and its protection reads are not built here.
-// ep_si/ep_sck/ep_hold/ep_cs keep their names so the SSF2 bank block
-// above needs no edit; pier_quirk is 0, so the branch that writes them is dead
-reg         ep_si, ep_sck, ep_hold, ep_cs;
-wire        pier_quirk = 0;
-wire        pier_eeprom_cs = 0;
+// PIER EEPROM
+reg         ep_si, m95_so, ep_sck, ep_hold, ep_cs;
+wire  [7:0] m95_di, m95_q;
+wire [11:0] m95_addr;
+wire        m95_rnw;
 
-// The Sega Channel is 4 MB of writable ROM in SDRAM for one Japanese download
+// pocket: the M95320 goes with the 24CXX above: the SVP build has no save RAM
+// behind it, and the serial table that sets pier_quirk is gated off there, so the
+// engine is replaced by its idle levels. pier_quirk is declared here rather than
+// with the other quirks because the instance sits in a generate scope, where a bare
+// name used ahead of its declaration would make an implicit net
+reg         pier_quirk;
+generate
+if(SVP) begin
+	assign m95_so   = 1;
+	assign m95_di   = 0;
+	assign m95_addr = 0;
+	assign m95_rnw  = 0;
+end
+else begin
+	STM95XXX pier_eeprom
+	(
+		.clk(clk),
+		.enable(pier_quirk),
+		.so(m95_so),
+		.si(ep_si),
+		.sck(ep_sck),
+		.hold_n(ep_hold),
+		.cs_n(ep_cs),
+		.wp_n(1'b1),
+		.ram_addr(m95_addr),
+		.ram_q(sram_q),
+		.ram_di(m95_di),
+		.ram_RnW(m95_rnw)
+	);
+end
+endgenerate
+// pocket-end
+
+wire pier_prot_cs = pier_quirk && (cart_addr == 'hAF3 || cart_addr == 'hAF4);
+reg [15:0] pier_prot_data;
+
+always @(posedge clk) begin
+	reg [3:0] pier_count;
+	reg old_oe;
+
+	old_oe <= cart_oe;
+
+	if(reset) pier_count <= 0;
+	else if(pier_prot_cs & ~old_oe & cart_oe) begin
+		if (pier_count < 6) begin
+			pier_count <= pier_count + 1'h1;
+			pier_prot_data <= cart_addr[1] ? 16'h0000 : 16'h0010;
+		end else begin
+			pier_prot_data <= cart_addr[1] ? 16'h0001 : 16'h8010;
+		end
+	end
+end
+
+wire pier_eeprom_cs = pier_quirk && cart_time && cart_addr[3:1] == 'h5;
+wire [15:0] pier_eeprom_data = {15'h7FFF, m95_so};
+
+// pocket: the Sega Channel is 4 MB of writable ROM in SDRAM for one Japanese download
 // service, and the J-Cart is a second controller port the Pocket does not have.
 // rom_we staying 0 is what keeps the sdram port 1 write strobes from ever being
 // sampled asserted, so do not revive it without giving them a gate of their own
@@ -670,8 +731,9 @@ wire        fm_det_cs = 0;
 
 //---------------------- Cart detect ---------------------------------------
 
-// pocket: pier_quirk and schan_quirk are constants at their deletion sites above, so they
-// are gone from here. Only the base build writes svp_quirk, where it feeds noram_quirk
+// pocket: pier_quirk is declared at its EEPROM and schan_quirk is a constant at its
+// deletion site, both above, so they are gone from here. Only the base build writes
+// svp_quirk, where it feeds noram_quirk
 reg       sram00_quirk, fmbusy_quirk, noram_quirk, svp_quirk;
 // pocket-end
 reg [3:0] eeprom_quirk;
@@ -691,7 +753,7 @@ always @(posedge clk) begin
 	if(~old_dl && cart_dl) begin
 // pocket: the quirks whose logic is gone are constants now, there is no lightgun to
 // pick a type or a sensor delay for, and the battery-RAM flag clears with the rest
-		{sram00_quirk,fmbusy_quirk,noram_quirk,svp_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
+		{sram00_quirk,fmbusy_quirk,noram_quirk,pier_quirk,svp_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
 		sram_present <= 0;
 // pocket-end
 		crc_real <= 0;
@@ -741,11 +803,12 @@ always @(posedge clk) begin
 			else if(cart_id[63:0] == "T-120096") eeprom_quirk <= 4'b0100;  // 24C16 JCART Micro Machines 2 - Turbo Tournament
 			else if(cart_id[63:0] == "T-120146") eeprom_quirk <= 4'b0101;  // 24C65 Brian Lara Cricket 96 / Shane Warne Cricket
 
-// pocket: pier_quirk and schan_quirk are tied off at their deletion sites above
-// and the lightgun ports are gone, so the rows that set them (Pier Solar, Game no
-// Kanzume Otokuyou) and the sensor-delay block that closed the upstream chain are
-// dropped
+// pocket: schan_quirk is tied off at its deletion site above and the lightgun ports
+// are gone, so the row that sets it (Game no Kanzume Otokuyou) and the sensor-delay
+// block that closed the upstream chain are dropped
 			else if(cart_id[63:0] == "T-113016") noram_quirk  <= 1;        // Puggsy fake ram check
+			else if(cart_id[63:0] == "T-574023") pier_quirk   <= 1;        // Pier Solar Reprint
+			else if(cart_id[63:0] == "T-574013") pier_quirk   <= 1;        // Pier Solar 1st Edition
 			else if(cart_id[63:0] == "MK-1229 ") svp_quirk    <= 1;        // Virtua Racing EU/US
 			else if(cart_id[63:0] == "G-7001  ") svp_quirk    <= 1;        // Virtua Racing JP
 			else if(cart_id[63:0] == "T-35036 ") fmbusy_quirk <= 1;        // Hellfire US
@@ -792,10 +855,11 @@ end
 
 assign ym2612_quirk = fmbusy_quirk;
 
-// pocket: an EEPROM cart carries no battery-RAM marker in its header, so APF's save
-// size has to come from the quirk instead. Never in the SVP build, whose EEPROM
-// engine is gone: the flag would let APF overwrite a real save file with garbage
-assign eeprom_present = !SVP && |eeprom_quirk;
+// pocket: an EEPROM cart, 24CXX or Pier Solar's M95320, carries no battery-RAM marker
+// in its header, so APF's save size has to come from the quirks instead. Never in the
+// SVP build, whose EEPROM engines are gone: the flag would let APF overwrite a real
+// save file with garbage
+assign eeprom_present = !SVP && (|eeprom_quirk || pier_quirk);
 // pocket-end
 
 endmodule

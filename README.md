@@ -45,14 +45,14 @@ are supported.
 ### Cartridges
 
 Plain ROMs, SSF2 bank switching (Super Street Fighter 2 and most pirate carts),
-the Realtec and SF-001/002/004 mappers, the SVP chip (Virtua Racing), and the
-fixed-value protection reads a handful of unlicensed carts expect.
+the Realtec, SF-001/002/004 and Pier Solar mappers, the SVP chip (Virtua Racing),
+and the fixed-value protection reads a handful of unlicensed carts expect.
 
 ### Saves
 
-Cartridges with battery-backed SRAM or a 24CXX serial EEPROM save to a `.sav`
-file. Anything whose header claims save memory gets one, so a few homebrew and
-test ROMs end up with a `.sav` they never use.
+Cartridges with battery-backed SRAM, a 24CXX serial EEPROM or Pier Solar's M95320
+SPI EEPROM save to a `.sav` file. Anything whose header claims save memory gets
+one, so a few homebrew and test ROMs end up with a `.sav` they never use.
 
 > [!WARNING]
 >
@@ -120,7 +120,7 @@ The game pauses while the Pocket menu is open.
 - Savestates and sleep, so leaving the core loses your progress
 - Master System backward compatibility
 - MD+ and CDDA, which need hardware the Pocket does not have
-- Pier Solar and Sega Channel carts
+- Sega Channel carts
 - J-Cart, so the Codemasters carts save but only take two controllers
 - Cheats, multitaps, lightguns, keyboard and mouse
 
